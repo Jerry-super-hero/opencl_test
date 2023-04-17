@@ -1,0 +1,15 @@
+__kernel                                               
+void vecadd(__global uint8 *A,                         
+           __global uint8 *B,                         
+           __global uint8 *C)                         
+{                                                      
+                                                       
+// Get the work=item's unique 10                       
+                                                       
+int idx=get_global_id(0);                              
+                                                       
+// Add the corresponding locations of                  
+// 'A' and 'B'. and store the result in 'C'.           
+C[idx] = A[idx] ^ B[idx];                              
+                                                       
+}                                                      

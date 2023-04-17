@@ -1,0 +1,1082 @@
+typedef signed char        int8_t;
+typedef short              int16_t;
+typedef int                int32_t;
+typedef long long          int64_t;
+typedef unsigned char      uint8_t;
+typedef unsigned short     uint16_t;
+typedef unsigned int       uint32_t;
+typedef unsigned long long uint64_t;
+
+typedef signed char        int_least8_t;
+typedef short              int_least16_t;
+typedef int                int_least32_t;
+typedef long long          int_least64_t;
+typedef unsigned char      uint_least8_t;
+typedef unsigned short     uint_least16_t;
+typedef unsigned int       uint_least32_t;
+typedef unsigned long long uint_least64_t;
+
+typedef signed char        int_fast8_t;
+typedef int                int_fast16_t;
+typedef int                int_fast32_t;
+typedef long long          int_fast64_t;
+typedef unsigned char      uint_fast8_t;
+typedef unsigned int       uint_fast16_t;
+typedef unsigned int       uint_fast32_t;
+typedef unsigned long long uint_fast64_t;
+
+typedef long long          intmax_t;
+typedef unsigned long long uintmax_t;
+
+
+#define secp128r1 16
+#define secp192r1 24
+#define secp256r1 32
+#define secp384r1 48
+#define ECC_CURVE secp256r1
+#define ECC_BYTES ECC_CURVE
+#define NUM_ECC_DIGITS (ECC_BYTES/8)
+#define MAX_TRIES 16
+
+__constant uint64_t ellipticCurve_a[4] = { 0x787968B4FA32C3FD, 0x2417842E73BBFEFF, 0x2F3C848B6831D7E0, 0xEC65228B3937E498 };
+__constant uint64_t ellipticCurve_b[4] = { 0x63E4C6D3B23B0C84, 0x9CF84241484BFE48, 0xF61D59A5B16BA06E, 0x6E12D1DA27C5249A };
+__constant uint64_t ellipticCurve_p[4] = { 0x8542D69E4C044F18, 0xE8B92435BF6FF7DE, 0x457283915C45517D, 0x722EDB8B08F1DFC3 };
+
+typedef struct
+{
+    uint64_t m_low;
+    uint64_t m_high;
+} uint128_t;
+
+typedef struct
+{
+    uint64_t x[NUM_ECC_DIGITS];
+    uint64_t y[NUM_ECC_DIGITS];
+} EccPoint;
+
+typedef struct
+{
+    uint64_t a[4];
+    uint64_t b[4];
+    uint64_t p[4];
+}EllipticCurveDef;
+
+//void* memcpy_cl(void* dest, const void* src, int n) {
+//    char* dp = dest;
+//    const char* sp = src;
+//    while (n--) {
+//        *dp++ = *sp++;
+//    }
+//    return dest;
+//}
+//
+//void* memset_cl(void* ptr, int value, int num) {
+//    unsigned char* p = ptr;
+//    while (num--) {
+//        *p++ = (unsigned char)value;
+//    }
+//    return ptr;
+//}
+
+//c语言实现memset_cl
+void* memset_cl(void* ptr, int value, int num) {
+    unsigned char* p = ptr;
+    while (num--) {
+        *p++ = (unsigned char)value;
+    }
+    return ptr;
+}
+
+//c语言实现memcpy
+void* memcpy_cl(void* dest, const void* src, int n) {
+    char* dp = dest;
+    const char* sp = src;
+    while (n--) {
+        *dp++ = *sp++;
+    }
+    return dest;
+}
+
+//-----------------------------------------------------------------
+
+#define LK_GVALUE_LEN       64 
+#define LK_WORD_SIZE        32 
+#define LK_GVALUE_BITLEN    256
+#define LK_HASH_NMEMB       8
+
+typedef unsigned int        UINT;
+#ifdef i386 
+typedef unsigned long long   UWORD;
+#else
+typedef unsigned long       UWORD;
+#endif
+typedef unsigned char   UCHAR;
+
+//常量
+// 0 <= j <= 15
+#define LK_T0   0x79cc4519
+// 16 <= j <= 63
+#define LK_T1   0x7a879d8a
+//循环左移
+#define LOOPSHFT(a, n) ( ((a) << (n)) | ((a) >> (LK_WORD_SIZE - (n))))
+//布尔函数
+#define LK_FF0(x, y, z) ((x)^(y)^(z))
+#define LK_FF1(x, y, z) (((x) & (y)) | ((x) & (z)) | ((y) & (z)))
+#define LK_GG0(x, y, z) ((x)^(y)^(z))
+#define LK_GG1(x, y, z) (( (x) & (y) ) | ((~x) & (z)))
+
+//置换函数
+#define LK_P0(x) (\
+    (x)^(LOOPSHFT((x), 9))^(LOOPSHFT((x), 17)) )
+#define LK_P1(x) (\
+    (x)^(LOOPSHFT((x), 15))^(LOOPSHFT((x), 23)) )
+
+//标准中给出的IV初始值
+#define LK_INIT_VALUE(t) {\
+    lk_sm3_context_t *x = (t);\
+    x->v[0] = 0x7380166f;\
+    x->v[1] = 0x4914b2b9;\
+    x->v[2] = 0x172442d7;\
+    x->v[3] = 0xda8a0600;\
+    x->v[4] = 0xa96f30bc;\
+    x->v[5] = 0x163138aa;\
+    x->v[6] = 0xe38dee4d;\
+    x->v[7] = 0xb0fb0e4e;\
+    memset_cl(x->data, 0, LK_GVALUE_LEN);\
+    x->total = 0;\
+    x->len = 0;}
+
+#define LK_LE_ONE(t) {\
+    lk_sm3_context_t *x = (t);\
+    UINT l_z, l_d;\
+    for (l_z = 0; l_z < LK_HASH_NMEMB; l_z++) {\
+        l_d = x->v[l_z];\
+        x->output[l_z*4] = ((l_d >> 24) & 0x000000ff);\
+        x->output[l_z*4 + 1] = ((l_d >> 16) & 0x000000ff);\
+        x->output[l_z*4 + 2] = ((l_d >> 8) & 0x000000ff);\
+        x->output[l_z*4 + 3] = (l_d & 0x000000ff);\
+    }}
+
+//大端转化
+#define LK_GE_ONE(c) (\
+    ((c&0x00000000000000ffUL) << 56) | (((c&0x000000000000ff00UL) << 40)) |\
+    ((c&0x0000000000ff0000UL) << 24) | (((c&0x00000000ff000000UL) << 8)) |\
+    ((c&0x000000ff00000000UL)  >> 8) | (((c&0x0000ff0000000000UL) >> 24)) |\
+    ((c&0x00ff000000000000UL) >> 40) | (((c&0xff00000000000000UL) >> 56)) )
+#define LK_GE(w, c) \
+    int j2;\
+    for (j = 0; j <= 15; j++) {\
+        j2 = j*4;\
+        w[j] = ((c[j2] << 24) | ((c[j2+1] << 16)) |\
+         (c[j2+2] << 8) | (c[j2+3]));\
+    }
+
+
+//压缩计算摘要函数
+#define LK_MSG_CF(t) {\
+    UINT j;\
+    lk_sm3_context_t *x = t;\
+    UCHAR *data = x->data;\
+    UINT W1[68];\
+    UINT W2[64];\
+    UINT a,b,c,d,e,f,g,h;\
+    a = x->v[0];\
+    b = x->v[1];\
+    c = x->v[2];\
+    d = x->v[3];\
+    e = x->v[4];\
+    f = x->v[5];\
+    g = x->v[6];\
+    h = x->v[7];\
+    LK_GE(W1, data)\
+for ( j = 16; j <= 67; j++ ) {\
+        W1[j] = LK_P1(W1[j-16]^W1[j-9]^(LOOPSHFT(W1[j-3], 15))) ^ LOOPSHFT(W1[j-13], 7) ^ W1[j-6];\
+    }\
+    for ( j = 0; j <= 63; j++ ) {\
+        W2[j] = W1[j] ^ W1[j+4];\
+    }\
+    for ( j = 0; j <= 63; j++ ) {\
+       UINT T, ss1, ss2, tt1, tt2;\
+       if ( j >= 0 && j <= 15 )\
+           T = LK_T0;\
+       else\
+           T = LK_T1;\
+        ss1 = LOOPSHFT( (LOOPSHFT(a, 12) + e + LOOPSHFT(T, j)), 7 );\
+        ss2 = ss1 ^ LOOPSHFT(a, 12);\
+        if ( j >= 0 && j <= 15 ) {\
+            tt1 = LK_FF0(a, b, c) + d + ss2 + W2[j];\
+            tt2 = LK_GG0(e, f, g) + h + ss1 + W1[j];\
+        } else {\
+            tt1 = LK_FF1(a, b, c) + d + ss2 + W2[j];\
+            tt2 = LK_GG1(e, f, g) + h + ss1 + W1[j];\
+        }\
+        d = c;\
+        c = LOOPSHFT(b, 9);\
+        b = a;\
+        a = tt1;\
+        h = g;\
+        g = LOOPSHFT(f, 19);\
+        f = e;\
+        e = LK_P0(tt2);\
+    }\
+    x->v[0] = a ^ x->v[0];\
+    x->v[1] = b ^ x->v[1];\
+    x->v[2] = c ^ x->v[2];\
+    x->v[3] = d ^ x->v[3];\
+    x->v[4] = e ^ x->v[4];\
+    x->v[5] = f ^ x->v[5];\
+    x->v[6] = g ^ x->v[6];\
+    x->v[7] = h ^ x->v[7];\
+    x->len = 0;\
+}
+
+typedef struct lk_sm3_context_s
+{
+    UINT    len;
+    UINT    total;
+    UCHAR   data[LK_GVALUE_LEN];
+    UINT    v[LK_HASH_NMEMB];
+    UCHAR   output[LK_WORD_SIZE];
+} lk_sm3_context_t;
+
+//-----------------------------------------------------------------
+
+bool IsZeroUint256(uint64_t* num)
+{
+    for (int i = 0; i < 4; i++)
+    {
+        if (num[i])
+        {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+bool IsZeroPoint(EccPoint* point)
+{
+    for (int i = 0; i < 4; i++)
+    {
+        if (point->x[i])
+        {
+            return 0;
+        }
+        if (point->y[i])
+        {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+void Uint256Cpy(uint64_t* des, uint64_t* src)
+{
+    for (int i = 0; i < 4; i++)
+    {
+        des[i] = src[i];
+    }
+}
+
+void Uint256BitShift(uint64_t* num, int shift)
+{
+    if (shift < 0)
+    {
+        while (shift++)
+        {
+            //num[3] = (num[3] >> 1) | ((num[2] & 1ULL) << 63);
+            //num[2] = (num[2] >> 1) | ((num[1] & 1ULL) << 63);
+            //num[1] = (num[1] >> 1) | ((num[0] & 1ULL) << 63);
+            //num[0] = num[0] >> 1;
+            num[0] = (num[0] >> 1) | ((num[1] & 1ULL) << 63);
+            num[1] = (num[1] >> 1) | ((num[2] & 1ULL) << 63);
+            num[2] = (num[2] >> 1) | ((num[3] & 1ULL) << 63);
+            num[3] = num[3] >> 1;
+        }
+    }
+    else if (shift > 0)
+    {
+        while (shift--)
+        {
+            num[3] = (num[3] << 1) | ((num[2] & (1ULL << 63)) >> 63);
+            num[2] = (num[2] << 1) | ((num[1] & (1ULL << 63)) >> 63);
+            num[1] = (num[1] << 1) | ((num[0] & (1ULL << 63)) >> 63);
+            num[2] = (num[0] << 1);
+        }
+    }
+}
+
+void Uint256ToString(uint8_t* res, uint64_t num[4])
+{
+    int  pos = 0;
+
+    for (int i = 3; i >= 0; i--)
+    {
+        for (int j = 7; j >= 0; j--)
+        {
+            res[pos++] = (num[i] & (0xffULL << (j * 8))) >> (j * 8);
+        }
+    }
+}
+
+//----------------------------------------------------------------
+
+static void lk_sm3_cf(lk_sm3_context_t* context)
+{
+    LK_MSG_CF(context)
+}
+
+void lk_sm3_update(lk_sm3_context_t* context, UCHAR* data, UINT len)
+{
+    int real_len, free, offset = 0;
+
+    real_len = len + context->len;
+    if (real_len < LK_GVALUE_LEN) {
+        //本次数据不够一个分组大小,先缓存起来
+        memcpy_cl(context->data + context->len, data + offset, len);
+        context->len = real_len;
+        context->total += len;
+        return;
+    }
+    free = LK_GVALUE_LEN - context->len;
+    memcpy_cl(context->data + context->len, data + offset, free);
+    context->total += free;
+    offset += free;
+    len -= free;
+    //进行迭代压缩
+    lk_sm3_cf(context);
+
+    while (1) {
+        if (len < LK_GVALUE_LEN) {
+            //本次数据不够一个分组大小,先缓存起来
+            memcpy_cl(context->data + context->len, data + offset, len);
+            context->len = len;
+            context->total += len;
+            return;
+        }
+        memcpy_cl(context->data + context->len, data + offset, LK_GVALUE_LEN);
+        offset += LK_GVALUE_LEN;
+        len -= LK_GVALUE_LEN;
+        context->total += LK_GVALUE_LEN;
+        //进行迭代压缩
+        lk_sm3_cf(context);
+    }
+}
+
+void lk_sm3_final(lk_sm3_context_t* context)
+{
+    UINT tk, k, free, i, len;
+    UCHAR tmp[LK_GVALUE_LEN] = { 0 };
+
+    tk = context->total * 8 % 512;
+    if (tk < 448) {
+        k = 448 - tk;
+    }
+    else {
+        k = 448 - tk + 512;
+    }
+    //计算需要填充的字节
+    k = k / 8 + 8;
+    free = LK_GVALUE_LEN - context->len;
+    k--;
+    context->data[context->len] = 0x80;
+    len = context->total * 8;
+    for (i = context->len + 1; i < LK_GVALUE_LEN; i++, k--) 
+    {
+        if (k != 8)
+            context->data[i] = 0x00;
+        else 
+        {
+            memset_cl(context->data + i, 0, 8);
+            UWORD* pdata = (UWORD*)(4 + &(context->data[i]));
+            *pdata = LK_GE_ONE(len);
+            break;
+        }
+    }
+    //进行迭代压缩
+    lk_sm3_cf(context);
+    if (64 == k) {
+        for (i = 0; i < LK_GVALUE_LEN; i++, k--) {
+            if (k != 8)
+                context->data[i] = 0x00;
+            else {
+                memset_cl(context->data + i, 0, 8);
+                UWORD* pdata = (UWORD*)(4 + &(context->data[i]));
+                *pdata = LK_GE_ONE(len);
+                break;
+            }
+        }
+        //进行迭代压缩
+        lk_sm3_cf(context);
+    }
+    //get result
+    LK_LE_ONE(context)
+}
+
+void SM3(char* cdata, int sizeInByte, char* res)
+{
+    lk_sm3_context_t context;
+    LK_INIT_VALUE(&context);
+    char buffer[1024] = { 0 };
+
+    lk_sm3_update(&context, cdata, sizeInByte);
+    lk_sm3_final(&context);
+    for (int i = 0; i < 32; i++)
+        res[i] = context.output[i];
+}
+
+//-------------------------------------------------------------------
+
+int vli_isZero(uint64_t* p_vli)
+{
+    uint i;
+    for(i = 0; i < NUM_ECC_DIGITS; ++i)
+    {
+        if(p_vli[i])
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+void vli_rshift1(uint64_t* p_vli)
+{
+    uint64_t* l_end = p_vli;
+    uint64_t l_carry = 0;
+
+    p_vli += NUM_ECC_DIGITS;
+    while(p_vli-- > l_end)
+    {
+        uint64_t l_temp = *p_vli;
+        *p_vli = (l_temp >> 1) | l_carry;
+        l_carry = l_temp << 63;
+    }
+}
+
+uint64_t vli_add(uint64_t* p_result, uint64_t* p_left, uint64_t* p_right)
+{
+    uint64_t l_carry = 0;
+    uint i;
+    for(i = 0; i < NUM_ECC_DIGITS; ++i)
+    {
+        uint64_t l_sum = p_left[i] + p_right[i] + l_carry;
+        if(l_sum != p_left[i])
+        {
+            l_carry = (l_sum < p_left[i]);
+        }
+        p_result[i] = l_sum;
+    }
+    return l_carry;
+}
+
+uint64_t vli_sub(uint64_t* p_result, uint64_t* p_left, uint64_t* p_right)
+{
+    uint64_t l_borrow = 0;
+    uint i;
+    for(i = 0; i < NUM_ECC_DIGITS; ++i)
+    {
+        uint64_t l_diff = p_left[i] - p_right[i] - l_borrow;
+        if(l_diff != p_left[i])
+        {
+            l_borrow = (l_diff > p_left[i]);
+        }
+        p_result[i] = l_diff;
+    }
+    return l_borrow;
+}
+
+int vli_cmp(uint64_t* p_left, uint64_t* p_right)
+{
+    int i;
+    for(i = NUM_ECC_DIGITS - 1; i >= 0; --i)
+    {
+        if(p_left[i] > p_right[i])
+        {
+            return 1;
+        }
+        else if(p_left[i] < p_right[i])
+        {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+uint64_t vli_lshift(uint64_t* p_result, uint64_t* p_in, uint p_shift)
+{
+    uint64_t l_carry = 0;
+    uint i;
+    for(i = 0; i < NUM_ECC_DIGITS; ++i)
+    {
+        uint64_t l_temp = p_in[i];
+        p_result[i] = (l_temp << p_shift) | l_carry;
+        l_carry = l_temp >> (64 - p_shift);
+    }
+
+    return l_carry;
+}
+
+void vli_clear(uint64_t* p_vli)
+{
+    uint i;
+    for(i = 0; i < NUM_ECC_DIGITS; ++i)
+    {
+        p_vli[i] = 0;
+    }
+}
+
+void vli_set(uint64_t* p_dest, uint64_t* p_src)
+{
+    uint i;
+    for(i = 0; i < NUM_ECC_DIGITS; ++i)
+    {
+        p_dest[i] = p_src[i];
+    }
+}
+
+uint128_t add_128_128(uint128_t a, uint128_t b)
+{
+    uint128_t l_result;
+    l_result.m_low = a.m_low + b.m_low;
+    l_result.m_high = a.m_high + b.m_high + (l_result.m_low < a.m_low);
+    return l_result;
+}
+
+uint128_t mul_64_64(uint64_t p_left, uint64_t p_right)
+{
+    uint128_t l_result;
+
+    uint64_t a0 = p_left & 0xffffffffull;
+    uint64_t a1 = p_left >> 32;
+    uint64_t b0 = p_right & 0xffffffffull;
+    uint64_t b1 = p_right >> 32;
+
+    uint64_t m0 = a0 * b0;
+    uint64_t m1 = a0 * b1;
+    uint64_t m2 = a1 * b0;
+    uint64_t m3 = a1 * b1;
+
+    m2 += (m0 >> 32);
+    m2 += m1;
+    if(m2 < m1)
+    {
+        // overflow
+        m3 += 0x100000000ull;
+    }
+
+    l_result.m_low = (m0 & 0xffffffffull) | (m2 << 32);
+    l_result.m_high = m3 + (m2 >> 32);
+
+    return l_result;
+}
+
+uint vli_numDigits(uint64_t* p_vli)
+{
+    int i=0;
+    /* Search from the end until we find a non-zero digit.
+       We do it in reverse because we expect that most digits will be nonzero. */
+    for(i = NUM_ECC_DIGITS - 1; i >= 0 && p_vli[i] == 0; --i)
+    {
+    }
+
+    return (i + 1);
+}
+
+vli_modAdd(uint64_t* p_result, uint64_t* p_left, uint64_t* p_right, uint64_t* p_mod)
+{
+    uint64_t l_carry = vli_add(p_result, p_left, p_right);
+    while(l_carry || vli_cmp(p_result, p_mod) >= 0)
+    {
+        if (l_carry == 1 && vli_cmp(p_result, p_mod) == -1) //本次减法需要借位。l_carry == 1和后面的判断其实是永远相等的，这样可以提高运行速度
+        {
+            l_carry = 0;
+        }
+        /* p_result > p_mod (p_result = p_mod + remainder), so subtract p_mod to get remainder. */
+        vli_sub(p_result, p_result, p_mod);
+    }
+}
+
+uint vli_numBits(uint64_t* p_vli)
+{
+    uint i=0;
+    uint64_t l_digit=0;
+
+    uint l_numDigits = vli_numDigits(p_vli);
+    if(l_numDigits == 0)
+    {
+        return 0;
+    }
+
+    l_digit = p_vli[l_numDigits - 1];
+    for(i = 0; l_digit; ++i)
+    {
+        l_digit >>= 1;
+    }
+
+    return ((l_numDigits - 1) * 64 + i);
+}
+
+void vli_modSub(uint64_t* p_result, uint64_t* p_left, uint64_t* p_right, uint64_t* p_mod)
+{
+    uint64_t l_borrow = vli_sub(p_result, p_left, p_right);
+    if(l_borrow)
+    {
+        vli_add(p_result, p_result, p_mod);
+    }
+}
+
+void vli_mult(uint64_t* p_result, uint64_t* p_left, uint64_t* p_right)
+{
+    uint128_t r01 = {0, 0};
+    uint64_t r2 = 0;
+
+    uint i, k;
+
+    /* Compute each digit of p_result in sequence, maintaining the carries. */
+    for(k = 0; k < NUM_ECC_DIGITS * 2 - 1; ++k)
+    {
+        uint l_min = (k < NUM_ECC_DIGITS ? 0 : (k + 1) - NUM_ECC_DIGITS);
+        for(i = l_min; i <= k && i < NUM_ECC_DIGITS; ++i)
+        {
+            uint128_t l_product = mul_64_64(p_left[i], p_right[k - i]);
+            r01 = add_128_128(r01, l_product);
+            r2 += (r01.m_high < l_product.m_high);
+        }
+        p_result[k] = r01.m_low;
+        r01.m_low = r01.m_high;
+        r01.m_high = r2;
+        r2 = 0;
+    }
+
+    p_result[NUM_ECC_DIGITS * 2 - 1] = r01.m_low;
+}
+
+#define EVEN(vli) (!(vli[0] & 1))
+void vli_modInv(uint64_t* p_result, uint64_t* p_input, uint64_t* p_mod)
+{
+    uint64_t a[NUM_ECC_DIGITS], b[NUM_ECC_DIGITS], u[NUM_ECC_DIGITS], v[NUM_ECC_DIGITS];
+    uint64_t l_carry;
+    int l_cmpResult;
+
+    if(vli_isZero(p_input))
+    {
+        vli_clear(p_result);
+        return;
+    }
+
+    vli_set(a, p_input);
+    vli_set(b, p_mod);
+    vli_clear(u);
+    u[0] = 1;
+    vli_clear(v);
+
+    while((l_cmpResult = vli_cmp(a, b)) != 0)
+    {
+        l_carry = 0;
+        if(EVEN(a))
+        {
+            vli_rshift1(a);
+            if(!EVEN(u))
+            {
+                l_carry = vli_add(u, u, p_mod);
+            }
+            vli_rshift1(u);
+            if(l_carry)
+            {
+                u[NUM_ECC_DIGITS - 1] |= 0x8000000000000000ull;
+            }
+        }
+        else if(EVEN(b))
+        {
+            vli_rshift1(b);
+            if(!EVEN(v))
+            {
+                l_carry = vli_add(v, v, p_mod);
+            }
+            vli_rshift1(v);
+            if(l_carry)
+            {
+                v[NUM_ECC_DIGITS - 1] |= 0x8000000000000000ull;
+            }
+        }
+        else if(l_cmpResult > 0)
+        {
+            vli_sub(a, a, b);
+            vli_rshift1(a);
+            if(vli_cmp(u, v) < 0)
+            {
+                vli_add(u, u, p_mod);
+            }
+            vli_sub(u, u, v);
+            if(!EVEN(u))
+            {
+                l_carry = vli_add(u, u, p_mod);
+            }
+            vli_rshift1(u);
+            if(l_carry)
+            {
+                u[NUM_ECC_DIGITS - 1] |= 0x8000000000000000ull;
+            }
+        }
+        else
+        {
+            vli_sub(b, b, a);
+            vli_rshift1(b);
+            if(vli_cmp(v, u) < 0)
+            {
+                vli_add(v, v, p_mod);
+            }
+            vli_sub(v, v, u);
+            if(!EVEN(v))
+            {
+                l_carry = vli_add(v, v, p_mod);
+            }
+            vli_rshift1(v);
+            if(l_carry)
+            {
+                v[NUM_ECC_DIGITS - 1] |= 0x8000000000000000ull;
+            }
+        }
+    }
+
+    vli_set(p_result, u);
+}
+
+void vli_modMult(uint64_t* p_result, uint64_t* p_left, uint64_t* p_right, uint64_t* p_mod)
+{
+    uint64_t l_product[2 * NUM_ECC_DIGITS];
+    uint64_t l_modMultiple[2 * NUM_ECC_DIGITS];
+    uint l_digitShift, l_bitShift;
+    uint l_productBits;
+    uint l_modBits = vli_numBits(p_mod);
+    uint64_t l_carry;
+
+    vli_mult(l_product, p_left, p_right);
+    l_productBits = vli_numBits(l_product + NUM_ECC_DIGITS);
+    if(l_productBits)
+    {
+        l_productBits += NUM_ECC_DIGITS * 64;
+    }
+    else
+    {
+        l_productBits = vli_numBits(l_product);
+    }
+
+    if(l_productBits < l_modBits)
+    {
+        /* l_product < p_mod. */
+        vli_set(p_result, l_product);
+        return;
+    }
+
+    /* Shift p_mod by (l_leftBits - l_modBits). This multiplies p_mod by the largest
+       power of two possible while still resulting in a number less than p_left. */
+    vli_clear(l_modMultiple);
+    vli_clear(l_modMultiple + NUM_ECC_DIGITS);
+    l_digitShift = (l_productBits - l_modBits) / 64;
+    l_bitShift = (l_productBits - l_modBits) % 64;
+    if(l_bitShift)
+    {
+        l_modMultiple[l_digitShift + NUM_ECC_DIGITS] = vli_lshift(l_modMultiple + l_digitShift, p_mod, l_bitShift);
+    }
+    else
+    {
+        vli_set(l_modMultiple + l_digitShift, p_mod);
+    }
+
+    /* Subtract all multiples of p_mod to get the remainder. */
+    vli_clear(p_result);
+    p_result[0] = 1; /* Use p_result as a temp var to store 1 (for subtraction) */
+    while(l_productBits > NUM_ECC_DIGITS * 64 || vli_cmp(l_modMultiple, p_mod) >= 0)
+    {
+        int l_cmp = vli_cmp(l_modMultiple + NUM_ECC_DIGITS, l_product + NUM_ECC_DIGITS);
+        if(l_cmp < 0 || (l_cmp == 0 && vli_cmp(l_modMultiple, l_product) <= 0))
+        {
+            if(vli_sub(l_product, l_product, l_modMultiple))
+            {
+                /* borrow */
+                vli_sub(l_product + NUM_ECC_DIGITS, l_product + NUM_ECC_DIGITS, p_result);
+            }
+            vli_sub(l_product + NUM_ECC_DIGITS, l_product + NUM_ECC_DIGITS, l_modMultiple + NUM_ECC_DIGITS);
+        }
+        l_carry = (l_modMultiple[NUM_ECC_DIGITS] & 0x01) << 63;
+        vli_rshift1(l_modMultiple + NUM_ECC_DIGITS);
+        vli_rshift1(l_modMultiple);
+        l_modMultiple[NUM_ECC_DIGITS - 1] |= l_carry;
+
+        --l_productBits;
+    }
+    vli_set(p_result, l_product);
+}
+
+void CurvePointAdd(EccPoint* res, EccPoint* p1, EccPoint* p2)
+{
+    uint64_t tmp1[4] = { 0 }, tmp2[4] = { 0 }, k[4] = { 0 }, k2[4] = { 0 },
+        num2[4] = { {2},{0},{0},{0} }, num3[4] = { {3},{0},{0},{0} };
+    int i = 0;
+
+
+    EllipticCurveDef Ec[1];
+
+    for (int i = 0; i < 4; i++)
+    {
+        Ec->a[i] = ellipticCurve_a[3 - i];
+        Ec->b[i] = ellipticCurve_b[3 - i];
+        Ec->p[i] = ellipticCurve_p[3 - i];
+    }
+
+    if (IsZeroPoint(p2))
+    {
+        for (i = 0; i < 4; i++)
+        {
+            res->x[i] = p1->x[i];
+            res->y[i] = p1->y[i];
+        }
+        return;
+    }
+    if (IsZeroPoint(p1))
+    {
+        for (i = 0; i < 4; i++)
+        {
+            res->x[i] = p2->x[i];
+            res->y[i] = p2->y[i];
+        }
+        return;
+    }
+    for (i = 0; i < 4; i++)
+    {
+        if (p1->x[i] != p2->x[i])
+        {
+            break;
+        }
+    }
+    if (i == 4)	//两点重合
+    {
+        vli_modMult(tmp1, p1->x, p1->x, Ec->p);//tmp1 = x1^2
+        vli_modMult(tmp1, num3, tmp1, Ec->p);//tmp1 = 3*x1^2
+        vli_modAdd(tmp1, tmp1, Ec->a, Ec->p);//tmp1 = 3*x1^2+a
+        vli_modMult(tmp2, num2, p2->y, Ec->p);//tmp2 = 2*y1
+        vli_modInv(k, tmp2, Ec->p);	//k = 1/(2*y1)
+        vli_modMult(k, k, tmp1, Ec->p);//k = (3*x1^2+a)/(2*y1)
+        vli_modMult(k2, k, k, Ec->p);//k2 = k^2
+        vli_modAdd(tmp1, p1->x, p2->x, Ec->p);//tmp1 = x1+x2
+        vli_modSub(tmp2, k2, tmp1, Ec->p);//tmp2 = x3 = x4
+
+        vli_modSub(tmp1, p1->x, tmp2, Ec->p);//tmp1 = x1 - x3
+        vli_modMult(tmp1, k, tmp1, Ec->p);//tmp1 = k(x1-x3)
+        vli_modSub(tmp1, tmp1, p1->y, Ec->p);//tmp1 = y4
+    }
+    else
+    {
+        vli_modSub(tmp1, p1->x, p2->x, Ec->p);//tmp1 = x1-x2
+        vli_modSub(tmp2, p1->y, p2->y, Ec->p);//tmp2 = y1-y2
+        vli_modInv(k, tmp1, Ec->p);	//k = 1/(x1-x2)
+        vli_modMult(k, k, tmp2, Ec->p);//k = (y1-y2)/(x1-x2)
+        vli_modMult(k2, k, k, Ec->p);//k2 = k^2
+        vli_modAdd(tmp1, p1->x, p2->x, Ec->p);//tmp1 = x1+x2
+        vli_modSub(tmp2, k2, tmp1, Ec->p);//tmp2 = x3 = x4
+
+        vli_modSub(tmp1, p1->x, tmp2, Ec->p);//tmp1 = x1 - x3
+        vli_modMult(tmp1, k, tmp1, Ec->p);//tmp1 = k(x1-x3)
+        vli_modSub(tmp1, tmp1, p1->y, Ec->p);//tmp1 = y4
+    }
+    for (i = 0; i < 4; i++)
+    {
+        res->x[i] = tmp2[i];
+        res->y[i] = tmp1[i];
+    }
+}
+
+void CurvePointMul(EccPoint* res, EccPoint* p1, uint64_t* times)
+{
+    EccPoint tmpPoint[1],// = malloc(sizeof(EccPoint)), 
+        tmpPoint1[1];// = malloc(sizeof(EccPoint));
+    uint64_t tmpTimes[4];// = malloc(sizeof(EccPoint));这里原本是错的，开的内存大了
+
+    Uint256Cpy(tmpPoint->x, p1->x);
+    Uint256Cpy(tmpPoint->y, p1->y);
+    Uint256Cpy(tmpTimes, times);
+
+    for (int i = 0; i < 4; i++)
+    {
+        res->x[i] = 0;
+        res->y[i] = 0;
+    }
+    while (!IsZeroUint256(tmpTimes))
+    {
+        if (tmpTimes[0] & 0x1)//位与计算，判断二进制最后一位是否为1
+        {
+          CurvePointAdd(res, res, tmpPoint);		//res = res + tmpPoint
+        }
+        Uint256BitShift(tmpTimes, -1);	//times >>= 1
+        Uint256Cpy(tmpPoint1->x, tmpPoint->x);
+        Uint256Cpy(tmpPoint1->y, tmpPoint->y);
+        CurvePointAdd(tmpPoint, tmpPoint, tmpPoint1);	//tmpPoint *= 2
+    }
+    //free(tmpPoint);
+    //free(tmpPoint1);
+    //free(tmpTimes);
+}
+
+void KDF(uint8_t* result, uint8_t* Z, int dataLenInBit, int keyLenInBit)//虽然此处可以修改，因为即使传进kdf的参数有改变，每次memset_cl函数都重置了里面的值，但是没有必要，因为这样申请的空间太多了
+{
+    uint8_t tmpRes[408],// = (uint8_t*)malloc(keyLenInBit / 8), //408
+         tmpData[68];// = (uint8_t*)malloc(dataLenInBit / 8 + 4);//68
+    keyLenInBit /= 8;
+    dataLenInBit /= 8;//转为byte数
+    memset_cl(tmpRes, 0, keyLenInBit);
+    memset_cl(tmpData, 0, dataLenInBit + 4);
+
+    uint32_t ct = 1;  //a.初始化32bit计数器
+    uint8_t hash[32] = { 0 }, ct2Byte[4] = { 0 }; //ct2Byte与计数器的值一样,只是为了方便计算
+    int realHashLen = 32; //摘要长度
+    int maxLoopNum = (keyLenInBit + 31) / 32; //times = [klenInBit/v](向上取整)
+    int i = 0;
+
+    memcpy_cl(tmpData, Z, dataLenInBit);
+    for (i = 0; i < maxLoopNum; i++)
+    {
+        ct2Byte[0] = (ct >> 24) & 0xFF;
+        ct2Byte[1] = (ct >> 16) & 0xFF;
+        ct2Byte[2] = (ct >> 8) & 0xFF;
+        ct2Byte[3] = (ct) & 0xFF;
+        memcpy_cl(tmpData + dataLenInBit, ct2Byte, 4);	// Z || ct
+        SM3(tmpData, dataLenInBit + 4, hash);	//b. 计算Hai = Hv(Z || ct)
+
+        if (i == maxLoopNum - 1) //c. 根据keylen/32是否整除，截取摘要的值
+        {
+            if (keyLenInBit % 32 != 0)
+            {
+                realHashLen = keyLenInBit % 32;
+            }
+        }
+        memcpy_cl(tmpRes + 32 * i, hash, realHashLen);	//d. 每次把结果连接上
+        //i++;
+        ct++;
+    }
+
+    if (result != NULL)
+    {
+        memcpy_cl(result, tmpRes, keyLenInBit);
+    }
+}
+
+void CalculateC1(EccPoint* result, uint64_t* k, EccPoint* G)
+{
+    CurvePointMul(result, G, k);
+}
+
+void CalculateKPb(EccPoint* result, uint64_t* k, EccPoint* Pb)
+{
+    CurvePointMul(result, Pb, k);
+}
+
+void CalculateC2(uint8_t* result, char* M, uint8_t* t, int lenInByte)
+{
+    for (int i = 0; i < lenInByte; i++)
+    {
+        result[i] = M[i] ^ t[i];
+    }
+}
+
+__kernel void SM2Encrypt(__global uint8_t* Cw,
+                         __global char* messagePlain1,
+                         __global int* messageSizeInBit,
+                         __global EccPoint* pubKey1,
+                         __global uint64_t* randomK1,
+                         __global EccPoint* G1)
+{
+    for(int i=0;i<505;i++)
+    {
+        Cw[i]=messagePlain1[0];
+    }
+
+    
+    EccPoint pointC1[1],
+        kPb[1];
+    uint8_t t[408],
+            x2[64],
+            y2[32],
+            C1[65],
+            x1[32],
+            y1[32],
+            C2[408],
+            C3[472];
+
+    uint8_t a='0';
+    char messagePlain[408];
+    
+    int idx=get_global_id(0);	
+
+    for(int i=0;i<408;i++)
+    {
+        messagePlain[i]=messagePlain1[i];
+    }
+
+    uint8_t C[505];
+    
+
+    EccPoint G2;
+    G2.x[0]=G1->x[0];
+    G2.x[1]=G1->x[1];
+    G2.x[2]=G1->x[2];
+    G2.x[3]=G1->x[3];
+    G2.y[0]=G1->y[0];
+    G2.y[1]=G1->y[1];
+    G2.y[2]=G1->y[2];
+    G2.y[3]=G1->y[3];
+    EccPoint* G=&G2;
+
+
+    EccPoint pubKey2;
+    pubKey2.x[0]=pubKey1->x[0];
+    pubKey2.x[1]=pubKey1->x[1];
+    pubKey2.x[2]=pubKey1->x[2];
+    pubKey2.x[3]=pubKey1->x[3];
+    pubKey2.y[0]=pubKey1->y[0];
+    pubKey2.y[1]=pubKey1->y[1];
+    pubKey2.y[2]=pubKey1->y[2];
+    pubKey2.y[3]=pubKey1->y[3];
+    EccPoint* pubKey=&pubKey2;
+    
+
+    uint64_t randomK[4]={0};
+    randomK[0]=randomK1[0];
+    randomK[1]=randomK1[1];
+    randomK[2]=randomK1[2];
+    randomK[3]=randomK1[3];
+    
+    CalculateC1(pointC1, randomK, G);
+    //CurvePointMul(pointC1, G, randomK)
+    Uint256ToString(x1, pointC1->x);
+    Uint256ToString(y1, pointC1->y);
+    C1[0] = 0x04;
+    memcpy_cl(C1 + 1, x1, 32);
+    memcpy_cl(C1 + 33, y1, 32);//C1 = 04||x1||y1
+
+    CalculateKPb(kPb, randomK, pubKey);
+    Uint256ToString(x2, kPb->x);
+    Uint256ToString(y2, kPb->y);
+
+    memcpy_cl(C3, x2, 32);
+    memcpy_cl(C3 + 32, messagePlain, messageSizeInBit[0] / 8);
+    memcpy_cl(C3 + 32 + messageSizeInBit[0] / 8, y2, 32);
+
+    memcpy_cl(x2 + 32, y2, 32);//x2 = x2 || y2
+    KDF(t, x2, 64 * 8, messageSizeInBit[0]);	//t = KDF()
+    CalculateC2(C2, messagePlain, t, messageSizeInBit[0]/ 8);	//C2 = M^t
+    SM3((uint8_t*)C3, 64 + messageSizeInBit[0] / 8, (uint8_t*)C3);	//C3 = SM3(x2||M||y2)
+
+    memcpy_cl(C, C1, 65);
+    memcpy_cl(C + 65, C2, messageSizeInBit[0] / 8);
+    memcpy_cl(C + 65 + messageSizeInBit[0] / 8, C3, 32);	//C = C1 || C2 || C3
+
+    //for(int i=0;i<505;i++)
+    //{
+    //    Cw[i]=9;
+    //}
+
+
+}
